@@ -1,0 +1,84 @@
+diff --git a/src/PmcDataBufferOps.c b/src/PmcDataBufferOps.c
+index 02062ea..567472e 100644
+--- a/src/PmcDataBufferOps.c
++++ b/src/PmcDataBufferOps.c
+@@ -153,11 +153,7 @@ static int PmcMmap(struct file *pFile, struct vm_area_struct *vma)
+ 
+         vma->vm_ops = &PmcMmapVmOps;
+         vma->vm_file->private_data = pFile->private_data;
+-#if defined(VM_FLAGS_SET)
+         vm_flags_set(vma, VM_DONTCOPY);
+-#else
+-        vma->vm_flags |= VM_DONTCOPY;
+-#endif
+ 
+         vmSize = (vma->vm_end - vma->vm_start);
+         node = cpu_to_node(pDataBufferCtx->m_coreId);
+diff --git a/src/PmcTimerConfig.c b/src/PmcTimerConfig.c
+index c793517..4bd59e8 100644
+--- a/src/PmcTimerConfig.c
++++ b/src/PmcTimerConfig.c
+@@ -102,10 +102,11 @@ static void PmcInitTimer(void* pInfo)
+ 
+     DRVPRINT("pTimerConfig(%p)", pTimerConfig);
+ 
+-#if !defined (HRTIMER_SETUP)
+-    hrtimer_init(&pTimerConfig->m_hrTimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
++    hrtimer_setup(&pTimerConfig->m_hrTimer, PmcTimerCallback, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+ #else
+-    hrtimer_setup(&pTimerConfig->m_hrTimer, pTimerConfig->m_hrTimer.function,CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
++    hrtimer_init(&pTimerConfig->m_hrTimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
++    pTimerConfig->m_hrTimer.function = PmcTimerCallback;
+ #endif
+ }
+ 
+diff --git a/src/PwrProfSharedMemOps.c b/src/PwrProfSharedMemOps.c
+index be27a76..5b5226c 100644
+--- a/src/PwrProfSharedMemOps.c
++++ b/src/PwrProfSharedMemOps.c
+@@ -39,6 +39,9 @@
+     #define VM_RESERVED   (VM_DONTEXPAND | VM_DONTDUMP)
+ #endif
+ 
++#include <linux/hrtimer.h>
++#include <linux/mm.h> // 包含 vm_flags 相关宏定义
++
+ 
+ DECLARE_WAIT_QUEUE_HEAD(work_queue);
+ 
+@@ -157,12 +160,7 @@ static int PwrMmap(struct file* file, struct vm_area_struct* vma)
+     if (NULL != file && NULL != vma)
+     {
+         vma->vm_ops          = &PwrVmOps;
+-
+-#if defined(VM_FLAGS_SET)
+-        vm_flags_set(vma, VM_RESERVED);
+-#else
+-        vma->vm_flags |= VM_RESERVED;
+-#endif
++        vm_flags_set(vma, VM_IO);
+ 
+         vma->vm_private_data = file->private_data;
+ 
+diff --git a/src/PwrProfTimer.c b/src/PwrProfTimer.c
+index 853106d..3596fc9 100644
+--- a/src/PwrProfTimer.c
++++ b/src/PwrProfTimer.c
+@@ -573,12 +573,12 @@ void InitHrTimer(uint32 cpu)
+     pCoreClientData = &per_cpu(g_coreClientData, cpu);
+ 
+     // initialize HR timer
+-#if !defined (HRTIMER_SETUP)
+-    hrtimer_init(&pCoreClientData->m_hrTimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
++    hrtimer_setup(&pCoreClientData->m_hrTimer, HrTimerCallback, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+ #else
+-    hrtimer_setup(&pCoreClientData->m_hrTimer,pCoreClientData->m_hrTimer.function, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+-#endif
++    hrtimer_init(&pCoreClientData->m_hrTimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+     pCoreClientData->m_hrTimer.function = &HrTimerCallback;
++#endif
+ 
+     return;
+ } // InitHrTimer
